@@ -18,13 +18,16 @@ import android.os.Message;
 
 import androidx.palette.graphics.Palette;
 
+import android.os.Vibrator;
 import android.support.wearable.watchface.CanvasWatchFaceService;
 import android.support.wearable.watchface.WatchFaceService;
 import android.support.wearable.watchface.WatchFaceStyle;
+import android.util.Log;
 import android.view.SurfaceHolder;
 import android.widget.Toast;
 
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
@@ -74,6 +77,8 @@ public class MyWatchFace extends CanvasWatchFaceService {
                     case MSG_UPDATE_TIME:
                         engine.handleUpdateTimeMessage();
                         break;
+                    case 3:
+                        break;
                 }
             }
         }
@@ -82,7 +87,7 @@ public class MyWatchFace extends CanvasWatchFaceService {
     private class Engine extends CanvasWatchFaceService.Engine {
         private static final float HOUR_STROKE_WIDTH = 5f;
         private static final float MINUTE_STROKE_WIDTH = 3f;
-        private static final float SECOND_TICK_STROKE_WIDTH = 2f;
+        private static final float SECOND_TICK_STROKE_WIDTH =1f;
 
         private static final float CENTER_GAP_AND_CIRCLE_RADIUS = 4f;
 
@@ -118,6 +123,7 @@ public class MyWatchFace extends CanvasWatchFaceService {
         private boolean mAmbient;
         private boolean mLowBitAmbient;
         private boolean mBurnInProtection;
+        Vibrator vibrator;
 
         @Override
         public void onCreate(SurfaceHolder holder) {
@@ -126,7 +132,7 @@ public class MyWatchFace extends CanvasWatchFaceService {
             setWatchFaceStyle(new WatchFaceStyle.Builder(MyWatchFace.this)
                     .setAcceptsTapEvents(true)
                     .build());
-
+            vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
             mCalendar = Calendar.getInstance();
 
             initializeBackground();
@@ -136,7 +142,7 @@ public class MyWatchFace extends CanvasWatchFaceService {
         private void initializeBackground() {
             mBackgroundPaint = new Paint();
             mBackgroundPaint.setColor(Color.BLACK);
-            mBackgroundBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.bg);
+            mBackgroundBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.face);
 
             /* Extracts colors from background image to improve watchface style. */
             Palette.from(mBackgroundBitmap).generate(new Palette.PaletteAsyncListener() {
@@ -151,6 +157,9 @@ public class MyWatchFace extends CanvasWatchFaceService {
                 }
             });
         }
+
+
+        ArrayList<Point> points = new ArrayList<>();//时间外圈渲染数据
 
         private void initializeWatchFace() {
             /* Set defaults for colors */
@@ -185,6 +194,7 @@ public class MyWatchFace extends CanvasWatchFaceService {
             mTickAndCirclePaint.setAntiAlias(true);
             mTickAndCirclePaint.setStyle(Paint.Style.STROKE);
             mTickAndCirclePaint.setShadowLayer(SHADOW_RADIUS, 0, 0, mWatchHandShadowColor);
+
         }
 
         @Override
@@ -307,6 +317,23 @@ public class MyWatchFace extends CanvasWatchFaceService {
             if (!mBurnInProtection && !mLowBitAmbient) {
                 initGrayBackgroundBitmap();
             }
+            float innerTickRadius = mCenterX - 5;
+            float innerTickRadius2 = mCenterX - 10;//%5的秒分钟长度
+            float outerTickRadius = mCenterX;
+            for (int tickIndex = 0; tickIndex < 60; tickIndex++) {
+                float tickRot = (float) (tickIndex * Math.PI * 2 / 60);
+                float innerX = (float) Math.sin(tickRot) * innerTickRadius;
+                float innerY = (float) -Math.cos(tickRot) * innerTickRadius;
+                float innerX2 = (float) Math.sin(tickRot) * innerTickRadius2;
+                float innerY2 = (float) -Math.cos(tickRot) * innerTickRadius2;
+                float outerX = (float) Math.sin(tickRot) * outerTickRadius;
+                float outerY = (float) -Math.cos(tickRot) * outerTickRadius;
+                if(tickIndex%5==0){
+                    points.add(new Point(mCenterX + innerX2, mCenterY + innerY2,mCenterX + outerX, mCenterY + outerY));
+                }else{
+                    points.add(new Point(mCenterX + innerX, mCenterY + innerY,mCenterX + outerX, mCenterY + outerY));
+                }
+            }
         }
 
         private void initGrayBackgroundBitmap() {
@@ -332,6 +359,7 @@ public class MyWatchFace extends CanvasWatchFaceService {
             switch (tapType) {
                 case TAP_TYPE_TOUCH:
                     // The user has started touching the screen.
+                    vibrator.cancel();
                     break;
                 case TAP_TYPE_TOUCH_CANCEL:
                     // The user has started a different gesture or otherwise cancelled the tap.
@@ -356,33 +384,15 @@ public class MyWatchFace extends CanvasWatchFaceService {
         }
 
         private void drawBackground(Canvas canvas) {
-
-            if (mAmbient && (mLowBitAmbient || mBurnInProtection)) {
-                canvas.drawColor(Color.BLACK);
-            } else if (mAmbient) {
-                canvas.drawBitmap(mGrayBackgroundBitmap, 0, 0, mBackgroundPaint);
-            } else {
-                canvas.drawBitmap(mBackgroundBitmap, 0, 0, mBackgroundPaint);
-            }
+            canvas.drawBitmap(mBackgroundBitmap, 0, 0, new Paint());
+            //canvas.drawColor(Color.BLACK);
         }
 
         private void drawWatchFace(Canvas canvas) {
 
-            /*
-             * Draw ticks. Usually you will want to bake this directly into the photo, but in
-             * cases where you want to allow users to select their own photos, this dynamically
-             * creates them on top of the photo.
-             */
-            float innerTickRadius = mCenterX - 10;
-            float outerTickRadius = mCenterX;
-            for (int tickIndex = 0; tickIndex < 12; tickIndex++) {
-                float tickRot = (float) (tickIndex * Math.PI * 2 / 12);
-                float innerX = (float) Math.sin(tickRot) * innerTickRadius;
-                float innerY = (float) -Math.cos(tickRot) * innerTickRadius;
-                float outerX = (float) Math.sin(tickRot) * outerTickRadius;
-                float outerY = (float) -Math.cos(tickRot) * outerTickRadius;
-                canvas.drawLine(mCenterX + innerX, mCenterY + innerY,
-                        mCenterX + outerX, mCenterY + outerY, mTickAndCirclePaint);
+
+            for(int i=0;i<points.size();i++){
+                canvas.drawLine(points.get(i).innerX,points.get(i).innerY,points.get(i).outerX,points.get(i).outerY,mTickAndCirclePaint);
             }
 
             /*
@@ -441,6 +451,9 @@ public class MyWatchFace extends CanvasWatchFaceService {
 
             /* Restore the canvas' original orientation. */
             canvas.restore();
+            if(mCalendar.get(Calendar.SECOND)==0){
+               vibrator.vibrate(100000);
+            }
         }
 
         @Override
